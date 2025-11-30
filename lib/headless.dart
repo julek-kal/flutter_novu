@@ -20,10 +20,14 @@ class HeadlessService {
   final int? retry;
   final int retryDelay;
   final SharedPreferencesAsync prefs = SharedPreferencesAsync();
-  final Function(int)? onUnreadChanged;
-  final Function(int)? onUnseenChanged;
-  final Function(Dot.Notification)? onReceived;
   final List<InboxTab> tabs;
+  final _notificationStreamController = StreamController<Dot.Notification>();
+  final _unreadStreamController = StreamController<int>();
+  final _unseenStreamController = StreamController<int>();
+
+  Stream<Dot.Notification> get onNotificationReceived => _notificationStreamController.stream;
+  Stream<int> get onUnreadCountChanged => _unreadStreamController.stream;
+  Stream<int> get onUnseenCountChanged => _unseenStreamController.stream;
 
   IO.Socket? _socket;
   String? _token;
@@ -37,9 +41,6 @@ class HeadlessService {
     this.subscriberHash,
     this.retry,
     this.retryDelay = 10000,
-    this.onUnreadChanged,
-    this.onUnseenChanged,
-    this.onReceived,
     this.tabs = const [],
   }) {
     var api = BaseApi(backendUrl);
@@ -55,9 +56,8 @@ class HeadlessService {
         _client.options.headers['Authorization'] = 'Bearer $_token';
       }
 
-      if (onUnreadChanged != null) {
-        countNotifications(read: false).then((value) => onUnreadChanged!(value));
-      }
+        countNotifications(read: false).then((value) => _unreadStreamController.add(value));
+      
     });
     // _socket = WebSocketChannel.connect(Uri.parse(socketUrl));
   }
@@ -74,28 +74,27 @@ class HeadlessService {
         'query': {'token': token},
       });
 
-      if (onReceived != null) {
         _socket!.on(WebSocketEvent.received.value, (data) {
           if (data['message'] != null) {
-            // onReceived!(Dot.Notification.fromJson(data['message']!));
+            _notificationStreamController.add(Dot.Notification.fromJson(data['message']!));
           }
         });
-      }
+      
 
-      if (onUnreadChanged != null) {
+    
         _socket!.on(WebSocketEvent.unread.value, (data) {
-          if (onUnreadChanged != null) {
+         
             countNotifications(read: false).then((value) =>
-                onUnreadChanged!(value));
-          }
+                _unreadStreamController.add(value));
+          
         });
       }
 
-      if (onUnseenChanged != null) {
+     
         _socket!.on(WebSocketEvent.unseen.value, (data) {
-          onUnseenChanged!(data['unseenCount']);
+          _unseenStreamController.add(data['unseenCount']);
         });
-      }
+      
 
       _socket!.on('connect_error', (error) {
         print('Error: $error');
@@ -110,7 +109,7 @@ class HeadlessService {
       //
       // _socket!.sink.add('2probe');
     }
-  }
+  
 
   Future<Dot.PaginatedResponse<InboxNotification>> getNotifications({
     bool archived = false,
@@ -143,9 +142,8 @@ class HeadlessService {
       'notifications/$id/${status.name}',
     )).data!;
 
-    if (onUnreadChanged != null) {
-      countNotifications(read: false).then((value) => onUnreadChanged!(value));
-    }
+      countNotifications(read: false).then((value) => _unreadStreamController.add(value));
+    
 
     return Dot.InboxNotification.fromJson(response['data']);
   }
@@ -158,9 +156,8 @@ class HeadlessService {
         }
     );
 
-    if (onUnreadChanged != null) {
-      countNotifications(read: false).then((value) => onUnreadChanged!(value));
-    }
+      countNotifications(read: false).then((value) => _unreadStreamController.add(value));
+    
   }
 
   Future<String> completeNotificationAction(String id, ButtonType action) async {

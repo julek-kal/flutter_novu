@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_novu/dot/inbox_notification.dart';
 import 'package:flutter_novu/enums.dart';
 import 'package:flutter_novu/generated/app_localizations.dart';
-import 'package:flutter_novu/inbox.dart';
+import 'package:flutter_novu/headless.dart';
 import 'package:flutter_novu/screens/preferences.dart';
 import 'package:flutter_novu/widgets/notification_tile.dart';
 

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_novu/dot/inbox_notification.dart' as dot;
 import 'package:flutter_novu/generated/app_localizations.dart';
-import 'package:flutter_novu/inbox.dart';
+import 'package:flutter_novu/headless.dart';
 import 'package:flutter_novu/widgets/bell_icon_painter.dart';
 import 'package:flutter_novu/widgets/notification_preference.dart';
 

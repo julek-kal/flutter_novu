@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_novu/dot.dart' as Dot;
 import 'package:flutter_novu/enums.dart';
-import 'package:flutter_novu/inbox.dart';
+import 'package:flutter_novu/headless.dart';
 import 'package:flutter_novu/types.dart';
 import 'package:flutter_novu/widgets/card.dart';
 
