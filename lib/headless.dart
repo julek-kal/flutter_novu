@@ -21,13 +21,15 @@ class HeadlessService {
   final int retryDelay;
   final SharedPreferencesAsync prefs = SharedPreferencesAsync();
   final List<InboxTab> tabs;
-  final _notificationStreamController = StreamController<Dot.Notification>();
-  final _unreadStreamController = StreamController<int>();
-  final _unseenStreamController = StreamController<int>();
+  final _notificationStreamController =
+      StreamController<Dot.Notification>.broadcast();
+  final _unreadStreamController = StreamController<int>.broadcast();
+  final _unseenStreamController = StreamController<int>.broadcast();
 
-  Stream<Dot.Notification> get onNotificationReceived => _notificationStreamController.stream.asBroadcastStream();
-  Stream<int> get onUnreadCountChanged => _unreadStreamController.stream.asBroadcastStream();
-  Stream<int> get onUnseenCountChanged => _unseenStreamController.stream.asBroadcastStream();
+  Stream<Dot.Notification> get onNotificationReceived =>
+      _notificationStreamController.stream;
+  Stream<int> get onUnreadCountChanged => _unreadStreamController.stream;
+  Stream<int> get onUnseenCountChanged => _unseenStreamController.stream;
 
   IO.Socket? _socket;
   String? _token;
@@ -44,7 +46,10 @@ class HeadlessService {
     this.tabs = const [],
   }) {
     var api = BaseApi(backendUrl);
-    api.request(method: ApiMethod.POST, endpoint: 'inbox/session', data: {'applicationIdentifier': applicationIdentifier, 'subscriberId': subscriberId}).then((response) {
+    api.request(method: ApiMethod.POST, endpoint: 'inbox/session', data: {
+      'applicationIdentifier': applicationIdentifier,
+      'subscriberId': subscriberId
+    }).then((response) {
       var value = response['data'];
       prefs.setString('novu_token', value['token']);
       initializeSocket(value['token']);
@@ -56,8 +61,8 @@ class HeadlessService {
         _client.options.headers['Authorization'] = 'Bearer $_token';
       }
 
-        countNotifications(read: false).then((value) => _unreadStreamController.add(value));
-      
+      countNotifications(read: false)
+          .then((value) => _unreadStreamController.add(value));
     });
     // _socket = WebSocketChannel.connect(Uri.parse(socketUrl));
   }
@@ -74,42 +79,36 @@ class HeadlessService {
         'query': {'token': token},
       });
 
-        _socket!.on(WebSocketEvent.received.value, (data) {
-          if (data['message'] != null) {
-            _notificationStreamController.add(Dot.Notification.fromJson(data['message']!));
-          }
-        });
-      
-
-    
-        _socket!.on(WebSocketEvent.unread.value, (data) {
-         
-            countNotifications(read: false).then((value) =>
-                _unreadStreamController.add(value));
-          
-        });
-      }
-
-     
-        _socket!.on(WebSocketEvent.unseen.value, (data) {
-          _unseenStreamController.add(data['unseenCount']);
-        });
-      
-
-      _socket!.on('connect_error', (error) {
-        print('Error: $error');
+      _socket!.on(WebSocketEvent.received.value, (data) {
+        if (data['message'] != null) {
+          _notificationStreamController
+              .add(Dot.Notification.fromJson(data['message']!));
+        }
       });
-      // _socket = WebSocketChannel.connect(Uri.parse('${socketUrl.replaceAll('http', 'ws')}/socket.io/?token=$token&EIO=4&transport=websocket'), protocols: ['websocket']);
-      //
-      // await _socket!.ready;
-      //
-      // _socket!.stream.listen((event) {
-      //   print(event);
-      // });
-      //
-      // _socket!.sink.add('2probe');
+
+      _socket!.on(WebSocketEvent.unread.value, (data) {
+        countNotifications(read: false)
+            .then((value) => _unreadStreamController.add(value));
+      });
     }
-  
+
+    _socket!.on(WebSocketEvent.unseen.value, (data) {
+      _unseenStreamController.add(data['unseenCount']);
+    });
+
+    _socket!.on('connect_error', (error) {
+      print('Error: $error');
+    });
+    // _socket = WebSocketChannel.connect(Uri.parse('${socketUrl.replaceAll('http', 'ws')}/socket.io/?token=$token&EIO=4&transport=websocket'), protocols: ['websocket']);
+    //
+    // await _socket!.ready;
+    //
+    // _socket!.stream.listen((event) {
+    //   print(event);
+    // });
+    //
+    // _socket!.sink.add('2probe');
+  }
 
   Future<Dot.PaginatedResponse<InboxNotification>> getNotifications({
     bool archived = false,
@@ -118,101 +117,109 @@ class HeadlessService {
     int limit = 10,
     List<String> tags = const [],
   }) async {
-    var response = (await _client.get<Map<String, dynamic>>(
-        'notifications',
-        queryParameters: {
-          'offset': page * limit,
-          'limit': limit,
-          'archived': archived,
-          if (read != null) 'read': read,
-          if (tags.isNotEmpty == true) 'tags[]': tags,
-        }
-    )).data!;
+    var response = (await _client
+            .get<Map<String, dynamic>>('notifications', queryParameters: {
+      'offset': page * limit,
+      'limit': limit,
+      'archived': archived,
+      if (read != null) 'read': read,
+      if (tags.isNotEmpty == true) 'tags[]': tags,
+    }))
+        .data!;
     return Dot.PaginatedResponse<Dot.InboxNotification>(
       page: response['page'] ?? page,
       totalCount: response['totalCount'] ?? 0,
       pageSize: limit,
       hasMore: response['hasMore'],
-      data: response['data'].map<InboxNotification>((var r) => InboxNotification.fromJson(r)).toList(),
+      data: response['data']
+          .map<InboxNotification>((var r) => InboxNotification.fromJson(r))
+          .toList(),
     );
   }
 
-  Future<Dot.InboxNotification> markNotificationAs(String id, MarkNotificationAs status) async {
+  Future<Dot.InboxNotification> markNotificationAs(
+      String id, MarkNotificationAs status) async {
     var response = (await _client.patch<Map<String, dynamic>>(
       'notifications/$id/${status.name}',
-    )).data!;
+    ))
+        .data!;
 
-      countNotifications(read: false).then((value) => _unreadStreamController.add(value));
-    
+    countNotifications(read: false)
+        .then((value) => _unreadStreamController.add(value));
 
     return Dot.InboxNotification.fromJson(response['data']);
   }
 
-  Future<void> markAllNotificationAs(MarkAllNotificationAs status, {List<String> tags = const []}) async {
-    await _client.post<Map<String, dynamic>>(
-        'notifications/${status.value}',
-        data: {
-          if (tags.isNotEmpty == true) 'tags': tags,
-        }
-    );
+  Future<void> markAllNotificationAs(MarkAllNotificationAs status,
+      {List<String> tags = const []}) async {
+    await _client
+        .post<Map<String, dynamic>>('notifications/${status.value}', data: {
+      if (tags.isNotEmpty == true) 'tags': tags,
+    });
 
-      countNotifications(read: false).then((value) => _unreadStreamController.add(value));
-    
+    countNotifications(read: false)
+        .then((value) => _unreadStreamController.add(value));
   }
 
-  Future<String> completeNotificationAction(String id, ButtonType action) async {
-    var response = (await _client.post<Map<String, dynamic>>(
-        'notifications/$id/complete',
-        data: {
-          'actionType': action.name,
-        }
-    )).data!;
+  Future<String> completeNotificationAction(
+      String id, ButtonType action) async {
+    var response = (await _client
+            .post<Map<String, dynamic>>('notifications/$id/complete', data: {
+      'actionType': action.name,
+    }))
+        .data!;
     return response['data']['notificationId'];
   }
 
   Future<String> reverseNotificationAction(String id, ButtonType action) async {
-    var response = (await _client.post<Map<String, dynamic>>(
-        'notifications/$id/revert',
-        data: {
-          'actionType': action.name,
-        }
-    )).data!;
+    var response = (await _client
+            .post<Map<String, dynamic>>('notifications/$id/revert', data: {
+      'actionType': action.name,
+    }))
+        .data!;
     return response['data']['notificationId'];
   }
 
-  Future<int> countNotifications({bool? read, bool? archived, List<String> tags = const [] }) async {
-    var response = (await _client.get<Map<String, dynamic>>(
-        'notifications/count',
-        queryParameters: {
-          'filters': jsonEncode([{
-            if (tags.isNotEmpty == true) 'tags': tags,
-            if (read != null) 'read': read,
-            if (archived != null) 'archived': archived
-          }])
+  Future<int> countNotifications(
+      {bool? read, bool? archived, List<String> tags = const []}) async {
+    var response = (await _client
+            .get<Map<String, dynamic>>('notifications/count', queryParameters: {
+      'filters': jsonEncode([
+        {
+          if (tags.isNotEmpty == true) 'tags': tags,
+          if (read != null) 'read': read,
+          if (archived != null) 'archived': archived
         }
-    )).data!;
+      ])
+    }))
+        .data!;
 
     return response['data'].first['count'];
   }
 
-  Future<List<Dot.PreferencesResponse>> fetchPreferences({List<String> tags = const []}) async {
-    var response = (await _client.get<Map<String, dynamic>>(
-        'preferences',
-        queryParameters: {
-          if (tags.isNotEmpty == true) 'tags[]': tags,
-        }
-    )).data!;
-    return response['data'].map<Dot.PreferencesResponse>((var r) => Dot.PreferencesResponse.fromJson(r)).toList();
+  Future<List<Dot.PreferencesResponse>> fetchPreferences(
+      {List<String> tags = const []}) async {
+    var response = (await _client
+            .get<Map<String, dynamic>>('preferences', queryParameters: {
+      if (tags.isNotEmpty == true) 'tags[]': tags,
+    }))
+        .data!;
+    return response['data']
+        .map<Dot.PreferencesResponse>(
+            (var r) => Dot.PreferencesResponse.fromJson(r))
+        .toList();
   }
 
   /// Update global preferences
   ///
   /// [preferences] is a map of preferences to update, key of the preference (in_app, sms, push, email, chat) and value of the preference
-  Future<Dot.PreferencesResponse> updateGlobalPreferences(Map<String, bool> preferences) async {
+  Future<Dot.PreferencesResponse> updateGlobalPreferences(
+      Map<String, bool> preferences) async {
     var response = (await _client.patch<Map<String, dynamic>>(
       'preferences',
       data: preferences,
-    )).data!;
+    ))
+        .data!;
     return Dot.PreferencesResponse.fromJson(response['data']);
   }
 
@@ -220,11 +227,13 @@ class HeadlessService {
   ///
   /// [preferences] is a map of preferences to update, key of the preference (in_app, sms, push, email, chat) and value of the preference
   /// [workflowId] is the id of the workflow to update
-  Future<Dot.PreferencesResponse> updateWorkflowPreferences(String workflowId, Map<String, bool> preferences) async {
+  Future<Dot.PreferencesResponse> updateWorkflowPreferences(
+      String workflowId, Map<String, bool> preferences) async {
     var response = (await _client.patch<Map<String, dynamic>>(
       'preferences/$workflowId',
       data: preferences,
-    )).data!;
+    ))
+        .data!;
     return Dot.PreferencesResponse.fromJson(response['data']);
   }
 }
