@@ -25,9 +25,9 @@ class HeadlessService {
   final _unreadStreamController = StreamController<int>();
   final _unseenStreamController = StreamController<int>();
 
-  Stream<Dot.Notification> get onNotificationReceived => _notificationStreamController.stream;
-  Stream<int> get onUnreadCountChanged => _unreadStreamController.stream;
-  Stream<int> get onUnseenCountChanged => _unseenStreamController.stream;
+  Stream<Dot.Notification> get onNotificationReceived => _notificationStreamController.stream.asBroadcastStream();
+  Stream<int> get onUnreadCountChanged => _unreadStreamController.stream.asBroadcastStream();
+  Stream<int> get onUnseenCountChanged => _unseenStreamController.stream.asBroadcastStream();
 
   IO.Socket? _socket;
   String? _token;
